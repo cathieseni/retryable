@@ -6,12 +6,14 @@ from retryable.backoff import (
     exponential_with_jitter,
     full_jitter,
 )
+from retryable.retry import retry
 
 __all__ = [
+    "retry",
     "constant",
     "exponential",
     "exponential_with_jitter",
     "full_jitter",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
