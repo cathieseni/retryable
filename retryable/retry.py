@@ -1,63 +1,63 @@
+"""Core retry decorator implementation."""
+
 import time
 import functools
-import logging
-from typing import Callable, Optional, Tuple, Type, Union
+from typing import Callable, Optional, Type
 
-from retryable.backoff import exponential_with_jitter
-
-logger = logging.getLogger(__name__)
-
-ExceptionTypes = Union[Type[Exception], Tuple[Type[Exception], ...]]
+from retryable.backoff import constant
+from retryable.hooks import HookRegistry, RetryEvent
 
 
 def retry(
     max_attempts: int = 3,
-    exceptions: ExceptionTypes = Exception,
-    backoff_strategy: Optional[Callable[[int], float]] = None,
-    on_retry: Optional[Callable[[int, Exception], None]] = None,
+    predicate: Optional[Callable] = None,
+    backoff: Optional[Callable[[int], float]] = None,
+    hooks: Optional[HookRegistry] = None,
+    exceptions: tuple[Type[BaseException], ...] = (Exception,),
 ):
-    """
-    Decorator that retries a function on failure with a configurable backoff strategy.
+    """Decorator factory that adds retry logic to a function.
 
-    :param max_attempts: Maximum number of attempts before giving up.
-    :param exceptions: Exception type(s) that trigger a retry.
-    :param backoff_strategy: Callable(attempt) -> seconds to sleep. Defaults to exponential_with_jitter.
-    :param on_retry: Optional callback invoked on each retry with (attempt, exception).
+    Args:
+        max_attempts: Maximum number of total attempts (including first call).
+        predicate: Optional callable(result) -> bool; retry when True.
+        backoff: Callable(attempt) -> float returning delay in seconds.
+        hooks: Optional HookRegistry for lifecycle callbacks.
+        exceptions: Tuple of exception types that trigger a retry.
     """
-    if backoff_strategy is None:
-        backoff_strategy = exponential_with_jitter()
+    if backoff is None:
+        backoff = constant(0)
+    if hooks is None:
+        hooks = HookRegistry()
 
-    def decorator(func: Callable) -> Callable:
-        @functools.wraps(func)
+    def decorator(fn: Callable) -> Callable:
+        @functools.wraps(fn)
         def wrapper(*args, **kwargs):
-            last_exception: Optional[Exception] = None
+            last_exc: Optional[BaseException] = None
             for attempt in range(1, max_attempts + 1):
                 try:
-                    return func(*args, **kwargs)
+                    result = fn(*args, **kwargs)
                 except exceptions as exc:
-                    last_exception = exc
-                    if attempt == max_attempts:
-                        logger.warning(
-                            "Function '%s' failed after %d attempt(s): %s",
-                            func.__name__,
-                            attempt,
-                            exc,
-                        )
-                        raise
-                    delay = backoff_strategy(attempt)
-                    logger.debug(
-                        "Attempt %d/%d for '%s' failed: %s. Retrying in %.2fs.",
-                        attempt,
-                        max_attempts,
-                        func.__name__,
-                        exc,
-                        delay,
-                    )
-                    if on_retry is not None:
-                        on_retry(attempt, exc)
-                    time.sleep(delay)
-            raise last_exception  # pragma: no cover
+                    last_exc = exc
+                    delay = backoff(attempt)
+                    hooks.fire_retry(RetryEvent(attempt=attempt, delay=delay, exception=exc))
+                    if attempt < max_attempts:
+                        time.sleep(delay)
+                    continue
+
+                if predicate is not None and predicate(result):
+                    delay = backoff(attempt)
+                    hooks.fire_retry(RetryEvent(attempt=attempt, delay=delay, result=result))
+                    if attempt < max_attempts:
+                        time.sleep(delay)
+                    continue
+
+                hooks.fire_success(attempt, result)
+                return result
+
+            hooks.fire_failure(max_attempts, last_exc)
+            if last_exc is not None:
+                raise last_exc
+            return result  # type: ignore[return-value]
 
         return wrapper
-
     return decorator
