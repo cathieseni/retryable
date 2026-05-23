@@ -1,22 +1,19 @@
-"""retryable — Decorator-based retry library with backoff and jitter."""
+"""retryable — Decorator-based retry library with backoff and jitter strategies."""
 
+from retryable.retry import retry
 from retryable.backoff import (
     constant,
     exponential,
     exponential_with_jitter,
     full_jitter,
 )
-from retryable.budget import RetryBudget, UnlimitedBudget
-from retryable.predicates import (
-    combine,
-    on_exception,
-    on_predicate,
-    on_result,
-)
-from retryable.retry import retry
+from retryable.predicates import on_exception, on_result, on_predicate
+from retryable.budget import RetryBudget
+from retryable.hooks import RetryEvent, HookRegistry
+from retryable.deadline import RetryDeadline
+from retryable.context import RetryContext
 
 __all__ = [
-    # core
     "retry",
     # backoff strategies
     "constant",
@@ -27,8 +24,10 @@ __all__ = [
     "on_exception",
     "on_result",
     "on_predicate",
-    "combine",
-    # budgets
+    # utilities
     "RetryBudget",
-    "UnlimitedBudget",
+    "RetryEvent",
+    "HookRegistry",
+    "RetryDeadline",
+    "RetryContext",
 ]
