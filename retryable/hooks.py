@@ -52,3 +52,25 @@ class HookRegistry:
     def fire_failure(self, attempts: int, last_exception: Optional[BaseException]) -> None:
         for hook in self.on_failure:
             hook(attempts, last_exception)
+
+    def clear(self, hook_type: Optional[str] = None) -> None:
+        """Remove registered hooks.
+
+        Args:
+            hook_type: One of ``'on_retry'``, ``'on_success'``, or
+                ``'on_failure'``.  If *None*, all hook lists are cleared.
+
+        Raises:
+            ValueError: If an unrecognised *hook_type* is provided.
+        """
+        valid_types = {"on_retry", "on_success", "on_failure"}
+        if hook_type is None:
+            self.on_retry.clear()
+            self.on_success.clear()
+            self.on_failure.clear()
+        elif hook_type in valid_types:
+            getattr(self, hook_type).clear()
+        else:
+            raise ValueError(
+                f"Unknown hook_type {hook_type!r}. Must be one of {sorted(valid_types)}."
+            )
